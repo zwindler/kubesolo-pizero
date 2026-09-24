@@ -1,6 +1,6 @@
 # kubesolo-pizero
 
-Kubernetes on a Raspberry Pi Zero 2 W (512 MB of RAM, 462 MB visible), with [KubeSolo](https://github.com/portainer/kubesolo), and yes, it runs DOOM.
+Kubernetes on a Raspberry Pi Zero 2 W (512 MB of RAM, 416 MiB visible out of the box), with [KubeSolo](https://github.com/portainer/kubesolo), and yes, it runs DOOM.
 
 - [`demo/`](demo/): scripts and manifests for a live demo, from a freshly flashed Raspberry Pi OS Lite to DOOM in a pod
 - [`doom-vnc/`](doom-vnc/): DOOM that serves its own screen over VNC, in a 2.4 MB image
@@ -11,17 +11,22 @@ Measured on a Pi Zero 2 W, Raspberry Pi OS Lite (Debian 13 trixie, kernel 6.18),
 
 ### OS tuning
 
-`MemAvailable` right after boot, one SSH session, no workload:
+`free -m` after boot, one SSH session, no workload. The first rows come from the first version of this experiment (V1, older image and kernel, hence 464 vs 462 MiB visible), the others were measured for this repository.
 
-| Step | MemAvailable | Notes |
-|---|---|---|
-| Stock image, `gpu_mem=16`, memory cgroup enabled | 332 MiB | starting point |
-| + `vm.min_free_kbytes` 16384 to 8192 | +25 MiB | mostly watermark accounting, ~8 MiB real |
-| + zram without SD writeback, `swappiness=100`, `page-cluster=0` | +5 MiB | boot 34 s to 28 s |
-| + no `pam_systemd`, no logind | +9 MiB | no `systemd --user` per login |
-| + NetworkManager replaced by wpa_supplicant + dhcpcd | +5 MiB | system.slice -19 MiB, **boot 27 s to 13 s** |
-| + camera/codec/DRM modules blacklisted, cron disabled | +2 MiB | |
-| **Total** | **~376 MiB** | used memory 130 MiB to 86 MiB |
+| Step | Visible | Used | Available | Source |
+|---|---|---|---|---|
+| Stock Raspberry Pi OS Lite (`gpu_mem` 64 MiB) | 416 MiB | 142 MiB | | V1 |
+| `gpu_mem=16` (headless, minimum value) | **464 MiB (+48)** | | | V1 |
+| avahi, polkit, ModemManager, bluetooth disabled | | -10 to -12 MiB | | V1 |
+| audio, camera/display detection, KMS and bluetooth off in `config.txt`, avahi/bluez purged, gettys masked, apt/man-db timers and cloud-init disabled | 462 MiB | 130 MiB | 332 MiB | measured |
+| `vm.min_free_kbytes` 16384 to 8192 | | | +25 MiB | measured, mostly watermark accounting (~8 MiB real) |
+| zram without SD writeback, `swappiness=100`, `page-cluster=0` | | | +5 MiB | measured, boot 34 s to 28 s |
+| camera/codec/DRM modules blacklisted, cron disabled | | | +2 MiB | measured |
+| no `pam_systemd`, no logind | | | +9 MiB | measured, no `systemd --user` per login |
+| NetworkManager replaced by wpa_supplicant + dhcpcd | | | +5 MiB | measured, system.slice -19 MiB, **boot 27 s to 13 s** |
+| **Result** | **462 MiB** | **86 MiB** | **376 MiB** | |
+
+The memory cgroup (`cgroup_enable=memory`) is not a gain but a requirement: the Zero 2 W device tree disables it and no pod can start without it.
 
 ### KubeSolo
 
