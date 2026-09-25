@@ -20,12 +20,25 @@ iptables --version
 echo "==> verifying ${KUBESOLO_ARCHIVE}"
 echo "${KUBESOLO_ARCHIVE_SHA256}  ${DIR}/${KUBESOLO_ARCHIVE}" | sha256sum -c -
 
+# Without NetworkManager there is no network-online target to wait for: KubeSolo
+# would pick 127.0.0.1 as node IP if it starts before DHCP.
+cat > /usr/local/sbin/wait-ipv4 <<'EOF'
+#!/bin/sh
+for _ in $(seq 1 60); do
+  ip -4 -o addr show scope global | grep -q inet && exit 0
+  sleep 1
+done
+exit 0
+EOF
+chmod 755 /usr/local/sbin/wait-ipv4
+
 # Written before the installer so the very first start already runs with these
 # settings. ExecStart is overridden because the v1.2.0 installer renders boolean
 # options as --flag=false, which the v1.2.0 binary rejects.
 mkdir -p /etc/systemd/system/kubesolo.service.d
 cat > /etc/systemd/system/kubesolo.service.d/10-pizero.conf <<'EOF'
 [Service]
+ExecStartPre=/usr/local/sbin/wait-ipv4
 ExecStart=
 ExecStart=/usr/local/bin/kubesolo --path=/var/lib/kubesolo --no-local-storage
 Environment=GOMEMLIMIT=180MiB

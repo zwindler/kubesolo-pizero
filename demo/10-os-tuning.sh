@@ -16,6 +16,7 @@ live steps (no reboot):
   services   stop and disable services useless on a headless node
   sessions   no per-login systemd user manager, no logind
   memory     sysctl, zram without SD writeback, small volatile journal
+  wifi       disable wifi power save (latency spikes above 1 s otherwise)
 
 reboot steps (apply, then: sudo $0 reboot):
   boot       config.txt (gpu_mem=16, no audio/camera/display/bt/kms), cmdline (memory cgroup), module blacklist
@@ -26,8 +27,8 @@ helpers:
   show       memory, top processes, boot time
   confirm    after the reboot: keep network/ssh changes (cancels the rollback)
   reboot     reboot without logind
-  live       services sessions memory
-  all        services sessions memory boot network
+  live       services sessions memory wifi
+  all        services sessions memory wifi boot network
 EOF
 }
 
@@ -83,6 +84,31 @@ EOF
   printf '[Journal]\nStorage=volatile\nRuntimeMaxUse=4M\n' > /etc/systemd/journald.conf.d/10-kubesolo-demo.conf
   systemctl restart systemd-journald
   echo "journal in RAM, capped to 4M"
+}
+
+step_wifi() {
+  log "wifi"
+  /usr/sbin/iw dev wlan0 set power_save off
+  cat > /etc/systemd/system/wifi-powersave-off.service <<'EOF'
+[Unit]
+Description=Disable wifi power save on wlan0
+BindsTo=sys-subsystem-net-devices-wlan0.device
+After=sys-subsystem-net-devices-wlan0.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/iw dev wlan0 set power_save off
+
+[Install]
+WantedBy=sys-subsystem-net-devices-wlan0.device
+EOF
+  systemctl daemon-reload
+  systemctl enable wifi-powersave-off.service >/dev/null 2>&1
+  # NetworkManager re-applies its own default (enabled) at every activation.
+  mkdir -p /etc/NetworkManager/conf.d
+  printf '[connection]\nwifi.powersave = 2\n' > /etc/NetworkManager/conf.d/10-kubesolo-demo-powersave.conf
+  /usr/sbin/iw dev wlan0 get power_save
 }
 
 append_all() {
@@ -276,8 +302,8 @@ step_reboot() { sync; systemctl start reboot.target; }
 steps=()
 for arg in "$@"; do
   case "$arg" in
-    live) steps+=(services sessions memory) ;;
-    all)  steps+=(services sessions memory boot network) ;;
+    live) steps+=(services sessions memory wifi) ;;
+    all)  steps+=(services sessions memory wifi boot network) ;;
     *)    steps+=("$arg") ;;
   esac
 done
@@ -285,7 +311,7 @@ done
 before=$(mem_available)
 for step in "${steps[@]}"; do
   case "$step" in
-    show|services|sessions|memory|boot|network|ssh|confirm|reboot) "step_$step" ;;
+    show|services|sessions|memory|wifi|boot|network|ssh|confirm|reboot) "step_$step" ;;
     *) usage; exit 1 ;;
   esac
 done

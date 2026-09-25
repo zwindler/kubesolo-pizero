@@ -24,7 +24,10 @@ Measured on a Pi Zero 2 W, Raspberry Pi OS Lite (Debian 13 trixie, kernel 6.18),
 | camera/codec/DRM modules blacklisted, cron disabled | | | +2 MiB | measured |
 | no `pam_systemd`, no logind | | | +9 MiB | measured, no `systemd --user` per login |
 | NetworkManager replaced by wpa_supplicant + dhcpcd | | | +5 MiB | measured, system.slice -19 MiB, **boot 27 s to 13 s** |
+| wifi power save off | | | | measured, ping 104 ms avg / 1.3 s max to **8 ms / 13 ms** |
 | **Result** | **462 MiB** | **86 MiB** | **376 MiB** | |
+
+Wifi power save is on by default: the kernel option `CONFIG_CFG80211_DEFAULT_PS` enables it on every wifi interface, and NetworkManager keeps that default. In 802.11 power save mode the radio sleeps between access point beacons (every 102.4 ms by default) and the access point buffers incoming frames until then, which matches the ~104 ms average. Bulk transfers keep the radio awake and barely suffer, but interactive traffic (ping, SSH keystrokes, VNC requests) waits for the next beacon every time. A sensible default for a laptop on battery, a bad one for a small server on mains power.
 
 The memory cgroup (`cgroup_enable=memory`) is not a gain but a requirement: the Zero 2 W device tree disables it and no pod can start without it.
 
