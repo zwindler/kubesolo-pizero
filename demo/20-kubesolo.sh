@@ -41,7 +41,7 @@ cat > /etc/systemd/system/kubesolo.service.d/10-pizero.conf <<'EOF'
 ExecStartPre=/usr/local/sbin/wait-ipv4
 ExecStart=
 ExecStart=/usr/local/bin/kubesolo --path=/var/lib/kubesolo --no-local-storage
-Environment=GOMEMLIMIT=180MiB
+Environment=GOMEMLIMIT=220MiB
 TimeoutStopSec=30
 ExecStopPost=/bin/systemctl --no-block stop kubepods.slice
 EOF

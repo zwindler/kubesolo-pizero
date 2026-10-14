@@ -37,8 +37,11 @@ The memory cgroup (`cgroup_enable=memory`) is not a gain but a requirement: the 
 |---|---|---|
 | default (with local-path-provisioner) | 118 MiB | |
 | `--no-local-storage` | 133 MiB | 11 % |
-| + `GOMEMLIMIT=180MiB` | **182 MiB** | 12-15 % |
+| + `GOMEMLIMIT=220MiB` | **~145 MiB** | low, GC stays calm with 9 more pods |
+| + `GOMEMLIMIT=180MiB` | 182 MiB | 12-15 %, but GC thrashing (4 cores) as soon as 9 more pods start |
 | + `GOMEMLIMIT=160MiB` | 197 MiB | 65-79 %, GC thrashing, not usable |
+
+KubeSolo idles with ~110 MiB of Go heap plus the stacks of ~4,300 goroutines. At 180 MiB that leaves a few MiB of headroom: starting 9 pods is enough to cross the limit, after which the GC runs 4-5 times per second and takes all 4 cores. 220 MiB costs ~35 MiB of MemAvailable and keeps KubeSolo usable under load.
 
 ### DOOM
 
