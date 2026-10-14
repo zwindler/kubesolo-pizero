@@ -27,6 +27,8 @@ spec:
           env:
             - name: VNC_PASSWORD
               value: idbehold
+            - name: VNC_SCALE
+              value: "2"
           ports:
             - containerPort: 5900
               name: vnc

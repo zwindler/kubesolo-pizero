@@ -5,6 +5,7 @@
 #include "doomgeneric.h"
 
 #include <ctype.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,8 @@ static unsigned int s_KeyQueueWriteIndex;
 static unsigned int s_KeyQueueReadIndex;
 static uint64_t s_PausedMs;
 static char *s_Passwords[2];
+static int s_Scale = 1;
+static uint32_t *s_ScaledBuffer;
 
 static uint64_t monotonic_ms(void)
 {
@@ -88,7 +91,13 @@ static void onKey(rfbBool down, rfbKeySym keySym, rfbClientPtr cl)
 
 void DG_Init()
 {
-    s_Screen = rfbGetScreen(NULL, NULL, DOOMGENERIC_RESX, DOOMGENERIC_RESY, 8, 3, 4);
+    const char *scale = getenv("VNC_SCALE");
+    if (scale)
+        s_Scale = atoi(scale);
+    if (s_Scale < 1 || s_Scale > 4)
+        s_Scale = 1;
+
+    s_Screen = rfbGetScreen(NULL, NULL, DOOMGENERIC_RESX * s_Scale, DOOMGENERIC_RESY * s_Scale, 8, 3, 4);
     if (!s_Screen)
     {
         fprintf(stderr, "rfbGetScreen failed\n");
@@ -101,7 +110,20 @@ void DG_Init()
     s_Screen->serverFormat.blueShift = 0;
 
     s_Screen->desktopName = "DOOM";
-    s_Screen->frameBuffer = (char *)DG_ScreenBuffer;
+    if (s_Scale > 1)
+    {
+        s_ScaledBuffer = malloc((size_t)DOOMGENERIC_RESX * DOOMGENERIC_RESY * s_Scale * s_Scale * sizeof(uint32_t));
+        if (!s_ScaledBuffer)
+        {
+            fprintf(stderr, "cannot allocate the scaled framebuffer\n");
+            exit(1);
+        }
+        s_Screen->frameBuffer = (char *)s_ScaledBuffer;
+    }
+    else
+    {
+        s_Screen->frameBuffer = (char *)DG_ScreenBuffer;
+    }
     s_Screen->alwaysShared = TRUE;
     s_Screen->kbdAddEvent = onKey;
 
@@ -119,13 +141,32 @@ void DG_Init()
     }
 
     rfbInitServer(s_Screen);
-    printf("DG_Init: VNC server listening on port %d (%dx%d)\n", s_Screen->port, DOOMGENERIC_RESX, DOOMGENERIC_RESY);
+    printf("DG_Init: VNC server listening on port %d (%dx%d)\n", s_Screen->port, s_Screen->width, s_Screen->height);
+}
+
+// Nearest neighbour: each pixel becomes a s_Scale x s_Scale block.
+static void upscale(void)
+{
+    const int width = DOOMGENERIC_RESX * s_Scale;
+    for (int y = 0; y < DOOMGENERIC_RESY; y++)
+    {
+        const uint32_t *src = (const uint32_t *)DG_ScreenBuffer + y * DOOMGENERIC_RESX;
+        uint32_t *dst = s_ScaledBuffer + (size_t)y * s_Scale * width;
+        for (int x = 0; x < DOOMGENERIC_RESX; x++)
+            for (int i = 0; i < s_Scale; i++)
+                dst[x * s_Scale + i] = src[x];
+        for (int i = 1; i < s_Scale; i++)
+            memcpy(dst + (size_t)i * width, dst, width * sizeof(uint32_t));
+    }
 }
 
 void DG_DrawFrame()
 {
-    if (s_Screen->clientHead)
-        rfbMarkRectAsModified(s_Screen, 0, 0, DOOMGENERIC_RESX, DOOMGENERIC_RESY);
+    if (!s_Screen->clientHead)
+        return;
+    if (s_Scale > 1)
+        upscale();
+    rfbMarkRectAsModified(s_Screen, 0, 0, s_Screen->width, s_Screen->height);
 }
 
 void DG_SleepMs(uint32_t ms)
@@ -159,8 +200,18 @@ void DG_SetWindowTitle(const char *title)
     (void)title;
 }
 
+// PID 1 in a container gets no default SIGTERM handler: without this, every
+// pod waits for its whole grace period before being killed.
+static void onTerm(int sig)
+{
+    (void)sig;
+    _exit(0);
+}
+
 int main(int argc, char **argv)
 {
+    signal(SIGTERM, onTerm);
+    signal(SIGINT, onTerm);
     doomgeneric_Create(argc, argv);
 
     for (;;)

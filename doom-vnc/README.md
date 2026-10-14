@@ -2,7 +2,7 @@
 
 DOOM ([doomgeneric](https://github.com/ozkl/doomgeneric)) with a [LibVNCServer](https://github.com/LibVNC/libvncserver) backend: the game serves its own framebuffer over VNC. No X server, no SDL, one static binary.
 
-- 320x200, native resolution: let the VNC client scale it (macOS Screen Sharing, RealVNC Viewer, Remmina...)
+- 320x200, native resolution: let the VNC client scale it (RealVNC Viewer, Remmina...), or set `VNC_SCALE`
 - the game is paused while no client is connected (0 % CPU)
 - `FROM scratch` image: the 1.1 MB static binary and `doom1.wad` (shareware v1.9, MD5 checked at build time)
 
@@ -18,6 +18,7 @@ Then open `vnc://localhost:5900`. Without `VNC_PASSWORD`, no authentication is r
 |---|---|---|
 | `VNC_PASSWORD` | none | VNC password |
 | `VNC_PORT` | `5900` | listening port |
+| `VNC_SCALE` | `1` | integer upscaling (1 to 4) for clients that cannot scale, such as TigerVNC: `2` serves 640x400 |
 
 The game writes its config and saves in the working directory: mount something writable there when running with a read-only root filesystem (see [`../demo/manifests/doom.yaml`](../demo/manifests/doom.yaml)).
 
@@ -31,4 +32,4 @@ Arrows move, Ctrl fires, Space opens doors, Shift runs, Alt strafes, Enter/Escap
 docker buildx build --platform linux/arm64 -t doom-vnc:arm64 --load .
 ```
 
-`RESX`/`RESY` build args change the framebuffer size (doomgeneric scales by an integer factor, e.g. 640x400), at the cost of 4x more pixels to encode.
+`RESX`/`RESY` build args change the framebuffer size at build time (doomgeneric scales by an integer factor, e.g. 640x400). `VNC_SCALE` does the same at run time. Either way, x2 means 4x more pixels to encode.
