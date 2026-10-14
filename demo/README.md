@@ -31,6 +31,17 @@ Run on the Pi (`sudo`), `kubectl` runs on the laptop.
 | 8 | `./demo/fetch-kubeconfig.sh <user>@<pi>` then `kubectl get nodes,pods -A` | a Kubernetes node on a Pi Zero | |
 | 9 | `kubectl apply -f demo/manifests/nginx.yaml` then `curl http://<pi>:30080` | a real workload | ~1 min (pull) |
 | 10 | `kubectl apply -f demo/manifests/doom.yaml` then `vnc://<pi>:30900` (password `idbehold`) | it runs DOOM | seconds |
+| 11 | `kubectl apply -f demo/manifests/doom-grid.yaml` then `kubectl -n doom scale deploy/doom-grid --replicas=9` | can we scale DOOM? 9 games, one VNC window each | ~2 min |
+
+## Scripted demo
+
+[`talk/`](talk/) runs every step above from the laptop with [demo-magic](https://github.com/paxtonhare/demo-magic): each command is typed on screen, then run locally (`kubectl`, `ping`, `curl`, TigerVNC) or on the Pi over a single shared SSH connection. Requires `pv`, `fzf` and TigerVNC.
+
+```sh
+PI_HOST=<user>@<pi> ./demo/talk/menu.sh
+```
+
+Settings can also come from a file: `DEMO_ENV=<file>` (`PI_HOST`, `VIDEO_DIR` for fallback videos named `01.mp4`...`11.mp4`, `VNC_PASSWORD`). In any demo, `v` instead of Enter plays the fallback video.
 
 The memory cgroup (`boot` step) is mandatory: without it KubeSolo installs fine but no pod can start (`memory.max: no such file or directory`).
 

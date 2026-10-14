@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: doom-grid
+  namespace: doom
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: doom-grid
+  template:
+    metadata:
+      labels:
+        app: doom-grid
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      containers:
+        - name: doom
+          image: ghcr.io/zwindler/kubesolo-pizero/doom-vnc:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: VNC_PASSWORD
+              value: idbehold
+            - name: VNC_SCALE
+              value: "1"
+          ports:
+            - containerPort: 5900
+              name: vnc
+          resources:
+            requests:
+              memory: 16Mi
+              cpu: 100m
+            limits:
+              memory: 32Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          workingDir: /data
+      volumes:
+        - name: data
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
