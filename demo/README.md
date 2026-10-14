@@ -47,12 +47,12 @@ The memory cgroup (`boot` step) is mandatory: without it KubeSolo installs fine 
 
 ## Backup Pi
 
-Run the whole demo once, then `sudo ./demo/import-images.sh --install`: KubeSolo wipes its images at every start (upstream [#197](https://github.com/portainer/kubesolo/issues/197)), this re-imports nginx and DOOM after each KubeSolo start, once the kubelet is up (importing earlier races with KubeSolo's own startup import and makes it exit). From power-on to the three pods running: ~4.5 min.
+Run the whole demo once. Since KubeSolo v1.2.1 the images and the pods survive restarts: a KubeSolo restart takes ~95 s and keeps the same pods. Power the backup Pi from its own supply: a laptop or dock USB port can drop when the laptop reboots.
 
 ## Notes
 
 - `network` rewrites the wifi setup from the Imager netplan file (Raspberry Pi OS uses netplan with the NetworkManager renderer, and there is no systemd-resolved: dhcpcd writes `/etc/resolv.conf`). It requests the same IPv4 address. **Run `confirm` within 10 minutes after the reboot**, otherwise the Pi restores NetworkManager and reboots.
 - `ssh` (Dropbear instead of OpenSSH) is not part of `all`: it only saves ~3 MiB and adds one more thing that can go wrong on stage.
 - After `sessions`, reboot with `./demo/10-os-tuning.sh reboot`: `systemctl reboot` complains about logind before falling back.
-- KubeSolo wipes its images at every start (upstream [#197](https://github.com/portainer/kubesolo/issues/197)): after a reboot, nginx and DOOM are pulled again (a few seconds each), or re-imported (see Backup Pi).
-- Scale the VNC window on the client side for the projector, the game renders 320x200.
+- If the hotspot has no Internet access, `sudo ./demo/import-images.sh` imports nginx and DOOM from the archives fetched by `00-prefetch.sh`.
+- DOOM serves 640x400 (`VNC_SCALE=2` in `doom.yaml`) for VNC clients that cannot scale, such as TigerVNC. `doom-grid.yaml` stays at 320x200 so that 9 windows fit on one screen.

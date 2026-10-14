@@ -7,7 +7,7 @@ Kubernetes on a Raspberry Pi Zero 2 W (512 MB of RAM, 416 MiB visible out of the
 
 ## Results
 
-Measured on a Pi Zero 2 W, Raspberry Pi OS Lite (Debian 13 trixie, kernel 6.18), KubeSolo v1.2.0 (Kubernetes 1.35), September 2026.
+Measured on a Pi Zero 2 W, Raspberry Pi OS Lite (Debian 13 trixie, kernel 6.18), KubeSolo v1.2.0 then v1.2.2 (Kubernetes 1.35), September and October 2026.
 
 ### OS tuning
 
@@ -37,11 +37,11 @@ The memory cgroup (`cgroup_enable=memory`) is not a gain but a requirement: the 
 |---|---|---|
 | default (with local-path-provisioner) | 118 MiB | |
 | `--no-local-storage` | 133 MiB | 11 % |
-| + `GOMEMLIMIT=220MiB` | **~145 MiB** | low, GC stays calm with 9 more pods |
+| + `GOMEMLIMIT=220MiB` (v1.2.2) | **~155 MiB** | 2 %, GC stays calm with 9 more pods |
 | + `GOMEMLIMIT=180MiB` | 182 MiB | 12-15 %, but GC thrashing (4 cores) as soon as 9 more pods start |
 | + `GOMEMLIMIT=160MiB` | 197 MiB | 65-79 %, GC thrashing, not usable |
 
-KubeSolo idles with ~110 MiB of Go heap plus the stacks of ~4,300 goroutines. At 180 MiB that leaves a few MiB of headroom: starting 9 pods is enough to cross the limit, after which the GC runs 4-5 times per second and takes all 4 cores. 220 MiB costs ~35 MiB of MemAvailable and keeps KubeSolo usable under load.
+KubeSolo idles with ~110 MiB of Go heap plus the stacks of ~4,300 goroutines. At 180 MiB that leaves a few MiB of headroom: starting 9 pods is enough to cross the limit, after which the GC runs 4-5 times per second and takes all 4 cores. 220 MiB costs ~30 MiB of MemAvailable and keeps KubeSolo usable under load.
 
 ### DOOM
 
@@ -54,12 +54,15 @@ KubeSolo idles with ~110 MiB of Go heap plus the stacks of ~4,300 goroutines. At
 | RAM, playing | | ~4 MiB (6 MiB peak) |
 | Playing over ZRLE | | 26 fps, 0.33 MB/s, 58 % of one core |
 
-## Known KubeSolo v1.2.0 issues worked around here
+## KubeSolo issues met along the way
 
-- The installer renders boolean options as `--flag=false`, rejected by the binary (fixed on `develop`, [#188](https://github.com/portainer/kubesolo/pull/188)): `ExecStart` is overridden with `--no-local-storage`.
-- KubeSolo never stops by itself on SIGTERM (kubelet and controller-manager keep running) and leaves pods orphaned: `TimeoutStopSec=30` and `ExecStopPost=systemctl --no-block stop kubepods.slice`.
-- Every start wipes the containerd content store and snapshots ([#197](https://github.com/portainer/kubesolo/issues/197)): images come back from a registry at each boot, hence the small images.
-- On the SD card, unpacking the 64 MB local-path-provisioner layer (16,691 files) takes 5+ minutes, longer than the kubelet 2 min runtime timeout: local storage is disabled.
+Found with v1.2.0, most of them fixed upstream since:
+
+- The installer rendered boolean options as `--flag=false`, rejected by the binary: replaced by `/etc/kubesolo/config.yaml` in v1.2.1 ([#188](https://github.com/portainer/kubesolo/pull/188)), `--local-storage=false` now works.
+- Every start wiped the imported images and orphaned running pods ([#197](https://github.com/portainer/kubesolo/issues/197)): fixed in v1.2.1 ([#199](https://github.com/portainer/kubesolo/pull/199)). With v1.2.2 a restart keeps the same pods and takes ~95 s, against ~3 min 20 s with v1.2.0 and a re-import of the images.
+- `systemctl stop` hung until SIGKILL: fixed in v1.2.2 ([#207](https://github.com/portainer/kubesolo/pull/207)), a stop now takes ~3 s.
+- The local-path-provisioner image (64 MB, 16,691 files, 5+ minutes to unpack on the SD card) was imported at every start even with local storage disabled: fixed in v1.2.1 ([#195](https://github.com/portainer/kubesolo/pull/195)). Local storage stays disabled here.
+- Still there in v1.2.2: the kubelet eviction threshold is the upstream `memory.available<100Mi` and cannot be configured, more than 20 % of the RAM never goes to pods. `GOMEMLIMIT` is not a setting either, it stays in a systemd drop-in.
 
 ## License
 

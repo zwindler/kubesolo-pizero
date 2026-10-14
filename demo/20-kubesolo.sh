@@ -3,9 +3,9 @@
 set -euo pipefail
 
 DIR=/opt/kubesolo-demo
-KUBESOLO_VERSION=v1.2.0
+KUBESOLO_VERSION=v1.2.2
 KUBESOLO_ARCHIVE=kubesolo-${KUBESOLO_VERSION}-linux-arm64-offline.tar.gz
-KUBESOLO_ARCHIVE_SHA256=9121d911c7d2c80a6224cf369e9594625e592e9a524789bae00f6fa9922a1069
+KUBESOLO_ARCHIVE_SHA256=85ab7edb265b1f1559a1937b92eee8d6b0352c3c7fe78f4c641752b7cacc3a5c
 KUBECONFIG_PATH=/var/lib/kubesolo/pki/admin/admin.kubeconfig
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root"; exit 1; }
@@ -33,21 +33,16 @@ EOF
 chmod 755 /usr/local/sbin/wait-ipv4
 
 # Written before the installer so the very first start already runs with these
-# settings. ExecStart is overridden because the v1.2.0 installer renders boolean
-# options as --flag=false, which the v1.2.0 binary rejects.
+# settings. The installer writes /etc/kubesolo/config.yaml itself.
 mkdir -p /etc/systemd/system/kubesolo.service.d
 cat > /etc/systemd/system/kubesolo.service.d/10-pizero.conf <<'EOF'
 [Service]
 ExecStartPre=/usr/local/sbin/wait-ipv4
-ExecStart=
-ExecStart=/usr/local/bin/kubesolo --path=/var/lib/kubesolo --no-local-storage
 Environment=GOMEMLIMIT=220MiB
-TimeoutStopSec=30
-ExecStopPost=/bin/systemctl --no-block stop kubepods.slice
 EOF
 
 echo "==> installing KubeSolo ${KUBESOLO_VERSION} (offline build)"
-sh "$DIR/install-kubesolo.sh" --offline-install="$DIR/$KUBESOLO_ARCHIVE" | grep -E '✅|❌|⚠️' || true
+sh "$DIR/install-kubesolo.sh" --offline-install="$DIR/$KUBESOLO_ARCHIVE" --local-storage=false | grep -E '✅|❌|⚠️' || true
 
 echo "==> waiting for the admin kubeconfig"
 until [ -f "$KUBECONFIG_PATH" ]; do

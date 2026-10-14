@@ -4,12 +4,12 @@
 set -euo pipefail
 
 DIR=/opt/kubesolo-demo
-KUBESOLO_VERSION=v1.2.0
+KUBESOLO_VERSION=v1.2.2
 KUBESOLO_ARCHIVE=kubesolo-${KUBESOLO_VERSION}-linux-arm64-offline.tar.gz
-KUBESOLO_ARCHIVE_SHA256=9121d911c7d2c80a6224cf369e9594625e592e9a524789bae00f6fa9922a1069
-KUBESOLO_INSTALLER_SHA256=49afcd5709f2146af052e2d32ca60b9ef65445e0dc42222282dee70f1f282083
+KUBESOLO_ARCHIVE_SHA256=85ab7edb265b1f1559a1937b92eee8d6b0352c3c7fe78f4c641752b7cacc3a5c
+KUBESOLO_INSTALLER_SHA256=185ec19b17b5884badc6e5a465e9ef87af454d631327da716d63e678e28f882d
 DEBS=(iptables libip4tc2 libip6tc2 dropbear-bin libtomcrypt1 libtommath1)
-# ctr must match the containerd embedded in KubeSolo v1.2.0.
+# ctr must match the containerd embedded in KubeSolo (2.2.5 in v1.2.2).
 CONTAINERD_VERSION=2.2.5
 CONTAINERD_SHA256=ad3f7aec168ebbae8d24c412fdd2e8806d96599757f6032e38997d62a108158a
 CRANE_VERSION=v0.22.1
@@ -27,6 +27,9 @@ if ! echo "${KUBESOLO_ARCHIVE_SHA256}  ${KUBESOLO_ARCHIVE}" | sha256sum -c - >/d
   curl -fL -o "$KUBESOLO_ARCHIVE" "https://github.com/portainer/kubesolo/releases/download/${KUBESOLO_VERSION}/${KUBESOLO_ARCHIVE}"
 fi
 echo "${KUBESOLO_ARCHIVE_SHA256}  ${KUBESOLO_ARCHIVE}" | sha256sum -c -
+# The installer looks for it beside the archive.
+curl -fsSL -o SHA256SUMS "https://github.com/portainer/kubesolo/releases/download/${KUBESOLO_VERSION}/SHA256SUMS"
+grep "  ${KUBESOLO_ARCHIVE}$" SHA256SUMS | sha256sum -c -
 
 apt-get update -qq
 cd debs && apt-get -o APT::Sandbox::User=root download "${DEBS[@]}" && cd ..
@@ -45,8 +48,7 @@ if ! bin/crane version >/dev/null 2>&1; then
 fi
 bin/ctr --version
 
-# Fallback when the hotspot has no Internet: KubeSolo wipes its images at every
-# start, these archives can be imported again (see import-images.sh).
+# Fallback when the hotspot has no Internet: import them with import-images.sh.
 for image in "${IMAGES[@]}"; do
   out="images/$(echo "${image##*/}" | tr ':' '_').tar"
   bin/crane pull --platform linux/arm64 "$image" "$out"
