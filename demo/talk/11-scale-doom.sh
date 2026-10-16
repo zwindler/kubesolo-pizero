@@ -34,7 +34,9 @@ spec:
 YAML
   done
   for i in $(seq 1 "$i"); do
-    vnc_open $((30910 + i)) "320x200+$(( 20 + ((i - 1) % COLS) * 360 ))+$(( 60 + ((i - 1) / COLS) * 270 ))"
+    # x starts at 100: macOS pushes a window off a Dock on the left, which
+    # would shift the first column only.
+    vnc_open $((30910 + i)) "320x200+$(( 100 + ((i - 1) % COLS) * 360 ))+$(( 60 + ((i - 1) / COLS) * 270 ))"
   done
 }
 
