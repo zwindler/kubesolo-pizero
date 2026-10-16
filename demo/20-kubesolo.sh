@@ -50,5 +50,13 @@ until [ -f "$KUBECONFIG_PATH" ]; do
   sleep 2
 done
 
+# The kubeconfig shows up before KubeSolo has imported its embedded images, the
+# kubelet only starts afterwards.
+echo "==> waiting for the kubelet"
+until curl -sf -m 2 http://127.0.0.1:10248/healthz >/dev/null; do
+  systemctl is-active -q kubesolo || { echo "kubesolo is not running"; journalctl -u kubesolo -n 20 --no-pager; exit 1; }
+  sleep 2
+done
+
 echo "KubeSolo up in $(( $(date +%s) - start ))s, kubeconfig: $KUBECONFIG_PATH"
 echo "from your laptop: ./demo/fetch-kubeconfig.sh <user>@<pi-address>"

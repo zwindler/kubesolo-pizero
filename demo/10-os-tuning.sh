@@ -3,7 +3,6 @@
 # Every step is idempotent and can be run on its own during a live demo.
 set -euo pipefail
 
-DEMO_DIR=/opt/kubesolo-demo
 STATE_DIR=/etc/kubesolo-demo
 CONFIG=/boot/firmware/config.txt
 CMDLINE=/boot/firmware/cmdline.txt
@@ -21,11 +20,12 @@ live steps (no reboot):
 reboot steps (apply, then: sudo $0 reboot):
   boot       config.txt (gpu_mem=16, no audio/camera/display/bt/kms), cmdline (memory cgroup), module blacklist
   network    replace NetworkManager with wpa_supplicant + dhcpcd (auto rollback after 10 min)
-  ssh        replace OpenSSH with Dropbear (optional, auto rollback after 10 min)
+  wifi-add <ssid>  one more wifi network (asks for the passphrase), preferred over the
+             Imager one: run it before the talk for a phone hotspot
 
 helpers:
   show       memory, top processes, boot time
-  confirm    after the reboot: keep network/ssh changes (cancels the rollback)
+  confirm    after the reboot: keep the network change (cancels the rollback)
   reboot     reboot without logind
   live       services sessions memory wifi
   all        services sessions memory wifi boot network
@@ -161,18 +161,13 @@ if [ -f /etc/kubesolo-demo/network.applied ]; then
   systemctl enable NetworkManager.service NetworkManager-wait-online.service NetworkManager-dispatcher.service wpa_supplicant.service
   rm -f /etc/kubesolo-demo/network.applied
 fi
-if [ -f /etc/kubesolo-demo/ssh.applied ]; then
-  systemctl disable dropbear-lite.service
-  systemctl enable ssh.service
-  rm -f /etc/kubesolo-demo/ssh.applied
-fi
 systemctl disable kubesolo-demo-rescue.service
 systemctl start reboot.target
 EOF
   chmod 755 /usr/local/sbin/kubesolo-demo-rescue
   cat > /etc/systemd/system/kubesolo-demo-rescue.service <<'EOF'
 [Unit]
-Description=Roll back network/ssh demo changes unless confirmed
+Description=Roll back the network demo change unless confirmed
 
 [Service]
 ExecStart=/usr/local/sbin/kubesolo-demo-rescue
@@ -211,7 +206,8 @@ with open("/etc/wpa_supplicant/wpa_supplicant-wlan0.conf", "w") as f:
     f.write("ctrl_interface=DIR=/run/wpa_supplicant GROUP=netdev\nupdate_config=0\ncountry=FR\n\n"
             "network={\n\tssid=\"%s\"\n\tpsk=%s\n}\n" % (ssid, psk))
 PY
-  chmod 600 /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+  [ -f "$WPA_EXTRA" ] && cat "$WPA_EXTRA" >> "$WPA_CONF"
+  chmod 600 "$WPA_CONF"
 
   cp -n /etc/dhcpcd.conf /etc/dhcpcd.conf.orig
   cat > /etc/dhcpcd.conf <<EOF
@@ -255,49 +251,43 @@ EOF
   echo "after the reboot, run '$0 confirm' within 10 minutes or it rolls back"
 }
 
-step_ssh() {
-  log "ssh"
-  if ! command -v dropbear >/dev/null; then
-    dpkg -i "$DEMO_DIR"/debs/libtommath1_*.deb "$DEMO_DIR"/debs/libtomcrypt1_*.deb "$DEMO_DIR"/debs/dropbear-bin_*.deb >/dev/null
+WPA_CONF=/etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+WPA_EXTRA="$STATE_DIR/wpa-extra.conf"
+
+step_wifi_add() {
+  local ssid=$1 pass block
+  log "wifi-add $ssid"
+  read -rsp "passphrase for $ssid: " pass
+  echo
+  # Only the derived PSK is kept, never the passphrase.
+  block=$(wpa_passphrase "$ssid" "$pass" | sed '/#psk=/d; s/^}$/\tpriority=10\n}/')
+  mkdir -p "$STATE_DIR"
+  printf '\n%s\n' "$block" >> "$WPA_EXTRA"
+  chmod 600 "$WPA_EXTRA"
+  if systemctl is-enabled -q dhcpcd-wlan0.service 2>/dev/null; then
+    printf '\n%s\n' "$block" >> "$WPA_CONF"
+    echo "added to $WPA_CONF, used from the next boot"
+  else
+    echo "saved, the network step will add it"
   fi
-  mkdir -p /etc/dropbear "$STATE_DIR"
-  local t
-  for t in ed25519 ecdsa rsa; do
-    if [ -f "/etc/ssh/ssh_host_${t}_key" ] && [ ! -f "/etc/dropbear/dropbear_${t}_host_key" ]; then
-      dropbearconvert openssh dropbear "/etc/ssh/ssh_host_${t}_key" "/etc/dropbear/dropbear_${t}_host_key" >/dev/null 2>&1
-    fi
-  done
-  cat > /etc/systemd/system/dropbear-lite.service <<'EOF'
-[Unit]
-Description=Dropbear SSH server
-After=network.target
-
-[Service]
-ExecStart=/usr/sbin/dropbear -F -E -w -p 22 -r /etc/dropbear/dropbear_ed25519_host_key -r /etc/dropbear/dropbear_ecdsa_host_key -r /etc/dropbear/dropbear_rsa_host_key
-Restart=always
-OOMScoreAdjust=-1000
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  touch "$STATE_DIR/ssh.applied"
-  install_rescue
-  systemctl enable dropbear-lite.service >/dev/null 2>&1
-  systemctl disable ssh.service ssh.socket >/dev/null 2>&1 || true
-  echo "Dropbear on port 22 from next boot (same host keys), OpenSSH disabled but installed"
-  echo "after the reboot, run '$0 confirm' within 10 minutes or it rolls back"
 }
 
 step_confirm() {
   touch /run/kubesolo-demo-ok
   systemctl disable kubesolo-demo-rescue.service >/dev/null 2>&1 || true
-  echo "network/ssh changes confirmed, rollback cancelled"
+  echo "network change confirmed, rollback cancelled"
 }
 
 step_reboot() { sync; systemctl start reboot.target; }
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root"; exit 1; }
 [ $# -gt 0 ] || { usage; exit 1; }
+
+if [ "${1:-}" = "wifi-add" ]; then
+  [ $# -eq 2 ] || { usage; exit 1; }
+  step_wifi_add "$2"
+  exit 0
+fi
 
 steps=()
 for arg in "$@"; do
@@ -308,14 +298,9 @@ for arg in "$@"; do
   esac
 done
 
-before=$(mem_available)
 for step in "${steps[@]}"; do
   case "$step" in
-    show|services|sessions|memory|wifi|boot|network|ssh|confirm|reboot) "step_$step" ;;
+    show|services|sessions|memory|wifi|boot|network|confirm|reboot) "step_$step" ;;
     *) usage; exit 1 ;;
   esac
 done
-case " ${steps[*]} " in
-  *" show "*|*" reboot "*) ;;
-  *) printf '\nMemAvailable: %s MiB -> %s MiB\n' "$before" "$(mem_available)" ;;
-esac

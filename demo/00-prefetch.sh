@@ -8,7 +8,7 @@ KUBESOLO_VERSION=v1.2.2
 KUBESOLO_ARCHIVE=kubesolo-${KUBESOLO_VERSION}-linux-arm64-offline.tar.gz
 KUBESOLO_ARCHIVE_SHA256=85ab7edb265b1f1559a1937b92eee8d6b0352c3c7fe78f4c641752b7cacc3a5c
 KUBESOLO_INSTALLER_SHA256=185ec19b17b5884badc6e5a465e9ef87af454d631327da716d63e678e28f882d
-DEBS=(iptables libip4tc2 libip6tc2 dropbear-bin libtomcrypt1 libtommath1)
+DEBS=(iptables libip4tc2 libip6tc2)
 # ctr must match the containerd embedded in KubeSolo (2.2.5 in v1.2.2).
 CONTAINERD_VERSION=2.2.5
 CONTAINERD_SHA256=ad3f7aec168ebbae8d24c412fdd2e8806d96599757f6032e38997d62a108158a
@@ -17,6 +17,16 @@ CRANE_SHA256=898c0cff975f898a33e8c4580bdafb0e7c02c7faa33374e946762f97c4ab7110
 IMAGES=(nginx:1.29-alpine-slim ghcr.io/zwindler/kubesolo-pizero/doom-vnc:latest)
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root"; exit 1; }
+
+# The talk scripts run sudo over SSH from the laptop, without a terminal to type
+# a password in. Raspberry Pi Imager no longer sets this up.
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
+  echo "$SUDO_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/010-kubesolo-demo
+  chmod 440 /etc/sudoers.d/010-kubesolo-demo
+  visudo -cqf /etc/sudoers.d/010-kubesolo-demo
+  echo "passwordless sudo for $SUDO_USER"
+fi
+
 mkdir -p "$DIR/debs" "$DIR/bin" "$DIR/images"
 cd "$DIR"
 

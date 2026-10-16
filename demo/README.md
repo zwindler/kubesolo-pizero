@@ -11,9 +11,10 @@ From a freshly flashed Raspberry Pi OS Lite to DOOM in a Kubernetes pod, on a Ra
    sudo ./demo/00-prefetch.sh
    ```
 
-   Files land in `/opt/kubesolo-demo`: KubeSolo offline build (all images embedded) and installer, the `iptables`/`dropbear` packages, `ctr` and `crane`, and the nginx and DOOM images as archives, all checksum-verified. If the hotspot has no Internet access, run `sudo ./demo/import-images.sh` after step 7 below.
+   Files land in `/opt/kubesolo-demo`: KubeSolo offline build (all images embedded) and installer, the `iptables` packages, `ctr` and `crane`, and the nginx and DOOM images as archives, all checksum-verified. If the hotspot has no Internet access, run `sudo ./demo/import-images.sh` after step 7 below. It also gives the user passwordless sudo, which the [scripted demo](#scripted-demo) needs: Imager no longer sets it up.
 
-3. Optional but recommended: rehearse once, then reflash and redo steps 1-2.
+3. Imager takes a single wifi network. To add another one, typically a phone hotspot when Imager got the home wifi: `sudo ./demo/10-os-tuning.sh wifi-add <ssid>` (asks for the passphrase, keeps only the derived PSK). It is preferred over the Imager network once the `network` step has run.
+4. Optional but recommended: rehearse once, then reflash and redo steps 1-3.
 
 ## On stage
 
@@ -52,7 +53,6 @@ Run the whole demo once. Since KubeSolo v1.2.1 the images and the pods survive r
 ## Notes
 
 - `network` rewrites the wifi setup from the Imager netplan file (Raspberry Pi OS uses netplan with the NetworkManager renderer, and there is no systemd-resolved: dhcpcd writes `/etc/resolv.conf`). It requests the same IPv4 address. **Run `confirm` within 10 minutes after the reboot**, otherwise the Pi restores NetworkManager and reboots.
-- `ssh` (Dropbear instead of OpenSSH) is not part of `all`: it only saves ~3 MiB and adds one more thing that can go wrong on stage.
 - After `sessions`, reboot with `./demo/10-os-tuning.sh reboot`: `systemctl reboot` complains about logind before falling back.
 - If the hotspot has no Internet access, `sudo ./demo/import-images.sh` imports nginx and DOOM from the archives fetched by `00-prefetch.sh`.
 - DOOM serves 640x400 (`VNC_SCALE=2` in `doom.yaml`) for VNC clients that cannot scale, such as TigerVNC. `doom-grid.yaml` stays at 320x200 so that 9 windows fit on one screen.
