@@ -10,14 +10,14 @@ LABELS=(
   "01 Mémoire          | free, GPU, image d'origine"
   "02 Headless         | modules, timers, services"
   "03 Sessions         | systemd --user par connexion"
-  "04 Mémoire + wifi   | sysctl, zram, power save (ping avant / après)"
+  "04 Mémoire          | min_free_kbytes, swappiness, zram, journal"
   "05 Cgroups + reboot | l'enquête du device tree, boot + network, reboot"
   "06 Bilan OS         | confirm, show, temps de boot"
   "07 KubeSolo         | install offline"
   "08 Cluster          | kubeconfig, nodes, pods"
   "09 nginx            | un vrai workload"
   "10 DOOM             | it runs DOOM"
-  "11 Scaler DOOM      | 9 replicas, 9 fenêtres"
+  "11 Bonus            | une dernière chose..."
 )
 
 while true; do

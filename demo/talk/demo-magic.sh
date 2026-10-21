@@ -310,7 +310,8 @@ PI_PROMPT="${GREEN}pi${COLOR_RESET}:${BLUE}~/${PI_REPO}${COLOR_RESET} \$ "
 # One SSH connection for the whole demo: every pi command starts instantly.
 # /tmp and not $TMPDIR: on macOS the latter makes the socket path too long.
 SSH_OPTS=(-o ControlMaster=auto -o "ControlPath=/tmp/kubesolo-demo-%C" -o ControlPersist=15m
-          -o ConnectTimeout=5 -o ServerAliveInterval=5 -o ServerAliveCountMax=3)
+          -o ConnectTimeout=5 -o ServerAliveInterval=5 -o ServerAliveCountMax=3
+          -o LogLevel=ERROR)
 
 function pi_ssh() {
   ssh "${SSH_OPTS[@]}" "$PI_HOST" "$@"

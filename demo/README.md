@@ -11,7 +11,7 @@ From a freshly flashed Raspberry Pi OS Lite to DOOM in a Kubernetes pod, on a Ra
    sudo ./demo/00-prefetch.sh
    ```
 
-   Files land in `/opt/kubesolo-demo`: KubeSolo offline build (all images embedded) and installer, the `iptables` packages, `ctr` and `crane`, and the nginx and DOOM images as archives, all checksum-verified. If the hotspot has no Internet access, run `sudo ./demo/import-images.sh` after step 7 below. It also gives the user passwordless sudo, which the [scripted demo](#scripted-demo) needs: Imager no longer sets it up.
+   Files land in `/opt/kubesolo-demo`: KubeSolo offline build (all images embedded) and installer, the `iptables` packages (also installed, a KubeSolo prerequisite that saves time on stage), `ctr` and `crane`, and the nginx and DOOM images as archives, all checksum-verified. If the hotspot has no Internet access, run `sudo ./demo/import-images.sh` after step 7 below. It also gives the user passwordless sudo, which the [scripted demo](#scripted-demo) needs: Imager no longer sets it up.
 
 3. Imager takes a single wifi network. To add another one, typically a phone hotspot when Imager got the home wifi: `sudo ./demo/10-os-tuning.sh wifi-add <ssid>` (asks for the passphrase, keeps only the derived PSK). It is preferred over the Imager network once the `network` step has run.
 4. Optional but recommended: rehearse once, then reflash and redo steps 1-3.
@@ -25,7 +25,7 @@ Run on the Pi (`sudo`), `kubectl` runs on the laptop.
 | 1 | `./demo/10-os-tuning.sh show` | the stock image: 416 MiB visible (64 MiB for the GPU), ~270 MiB available | |
 | 2 | `./demo/10-os-tuning.sh services` | headless node: no avahi, bluetooth, cron, timers, getty | seconds |
 | 3 | `./demo/10-os-tuning.sh sessions` | no `systemd --user` per login, no logind | seconds |
-| 4 | `./demo/10-os-tuning.sh memory wifi` | `min_free_kbytes`, zram tuning, journal in RAM; wifi power save off (ping 104 ms avg / 1.3 s max to 8 ms / 13 ms) | seconds |
+| 4 | `./demo/10-os-tuning.sh memory` | `min_free_kbytes`, zram tuning, journal in RAM | seconds |
 | 5 | `./demo/10-os-tuning.sh boot network` then `./demo/10-os-tuning.sh reboot` | `gpu_mem=16`, memory cgroup, modules; NetworkManager replaced | ~15 s boot |
 | 6 | `./demo/10-os-tuning.sh confirm show` | keep the network change: 462 MiB visible, ~376 MiB available, 13 s boot | |
 | 7 | `./demo/20-kubesolo.sh` | KubeSolo installed offline, first start | ~3 min |

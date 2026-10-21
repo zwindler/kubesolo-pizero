@@ -19,6 +19,9 @@ spec:
         - name: doom
           image: ghcr.io/zwindler/kubesolo-pizero/doom-vnc:latest
           imagePullPolicy: IfNotPresent
+          # Straight into E1M1 with no monsters: no title screen, no
+          # self-playing demo in the windows nobody watches.
+          args: ["-warp", "1", "1", "-nomonsters"]
           env:
             - name: VNC_PASSWORD
               value: idbehold

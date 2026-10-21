@@ -43,6 +43,8 @@ grep "  ${KUBESOLO_ARCHIVE}$" SHA256SUMS | sha256sum -c -
 
 apt-get update -qq
 cd debs && apt-get -o APT::Sandbox::User=root download "${DEBS[@]}" && cd ..
+# A KubeSolo prerequisite with no effect on memory: installed now rather than on stage.
+command -v iptables >/dev/null || dpkg -i debs/libip4tc2_*.deb debs/libip6tc2_*.deb debs/iptables_*.deb >/dev/null
 
 if ! bin/ctr --version >/dev/null 2>&1; then
   curl -fsSL -o containerd.tar.gz "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-arm64.tar.gz"

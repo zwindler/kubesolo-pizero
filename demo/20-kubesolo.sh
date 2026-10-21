@@ -5,7 +5,6 @@ set -euo pipefail
 DIR=/opt/kubesolo-demo
 KUBESOLO_VERSION=v1.2.2
 KUBESOLO_ARCHIVE=kubesolo-${KUBESOLO_VERSION}-linux-arm64-offline.tar.gz
-KUBESOLO_ARCHIVE_SHA256=85ab7edb265b1f1559a1937b92eee8d6b0352c3c7fe78f4c641752b7cacc3a5c
 KUBECONFIG_PATH=/var/lib/kubesolo/pki/admin/admin.kubeconfig
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root"; exit 1; }
@@ -16,9 +15,6 @@ if ! command -v iptables >/dev/null; then
   dpkg -i "$DIR"/debs/libip4tc2_*.deb "$DIR"/debs/libip6tc2_*.deb "$DIR"/debs/iptables_*.deb >/dev/null
 fi
 iptables --version
-
-echo "==> verifying ${KUBESOLO_ARCHIVE}"
-echo "${KUBESOLO_ARCHIVE_SHA256}  ${DIR}/${KUBESOLO_ARCHIVE}" | sha256sum -c -
 
 # Without NetworkManager there is no network-online target to wait for: KubeSolo
 # would pick 127.0.0.1 as node IP if it starts before DHCP.

@@ -20,14 +20,13 @@ Measured on a Pi Zero 2 W, Raspberry Pi OS Lite (Debian 13 trixie, kernel 6.18),
 | avahi, polkit, ModemManager, bluetooth disabled | | -10 to -12 MiB | | V1 |
 | audio, camera/display detection, KMS and bluetooth off in `config.txt`, avahi/bluez purged, gettys masked, apt/man-db timers and cloud-init disabled | 462 MiB | 130 MiB | 332 MiB | measured |
 | `vm.min_free_kbytes` 16384 to 8192 | | | +25 MiB | measured, mostly watermark accounting (~8 MiB real) |
-| zram without SD writeback, `swappiness=100`, `page-cluster=0` | | | +5 MiB | measured, boot 34 s to 28 s |
+| zram without SD writeback, `swappiness=180` (measured with 100), `page-cluster=0` | | | +5 MiB | measured, boot 34 s to 28 s |
 | camera/codec/DRM modules blacklisted, cron disabled | | | +2 MiB | measured |
 | no `pam_systemd`, no logind | | | +9 MiB | measured, no `systemd --user` per login |
 | NetworkManager replaced by wpa_supplicant + dhcpcd | | | +5 MiB | measured, system.slice -19 MiB, **boot 27 s to 13 s** |
-| wifi power save off | | | | measured, ping 104 ms avg / 1.3 s max to **8 ms / 13 ms** |
 | **Result** | **462 MiB** | **86 MiB** | **376 MiB** | |
 
-Wifi power save is on by default: the kernel option `CONFIG_CFG80211_DEFAULT_PS` enables it on every wifi interface, and NetworkManager keeps that default. In 802.11 power save mode the radio sleeps between access point beacons (every 102.4 ms by default) and the access point buffers incoming frames until then, which matches the ~104 ms average. Bulk transfers keep the radio awake and barely suffer, but interactive traffic (ping, SSH keystrokes, VNC requests) waits for the next beacon every time. A sensible default for a laptop on battery, a bad one for a small server on mains power.
+Wifi power save was also turned off at first: in September 2026 it gave a 104 ms average ping (1.3 s at worst) against 8 ms without it. On freshly flashed cards in October, at home and on a phone hotspot, the difference was gone (8 to 20 ms either way), so the step was dropped.
 
 The memory cgroup (`cgroup_enable=memory`) is not a gain but a requirement: the Zero 2 W device tree disables it and no pod can start without it.
 

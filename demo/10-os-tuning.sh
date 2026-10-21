@@ -15,7 +15,6 @@ live steps (no reboot):
   services   stop and disable services useless on a headless node
   sessions   no per-login systemd user manager, no logind
   memory     sysctl, zram without SD writeback, small volatile journal
-  wifi       disable wifi power save (latency spikes above 1 s otherwise)
 
 reboot steps (apply, then: sudo $0 reboot):
   boot       config.txt (gpu_mem=16, no audio/camera/display/bt/kms), cmdline (memory cgroup), module blacklist
@@ -27,8 +26,8 @@ helpers:
   show       memory, top processes, boot time
   confirm    after the reboot: keep the network change (cancels the rollback)
   reboot     reboot without logind
-  live       services sessions memory wifi
-  all        services sessions memory wifi boot network
+  live       services sessions memory
+  all        services sessions memory boot network
 EOF
 }
 
@@ -70,7 +69,7 @@ step_memory() {
   log "memory"
   cat > /etc/sysctl.d/99-zz-kubesolo-demo.conf <<EOF
 vm.min_free_kbytes = 8192
-vm.swappiness = 100
+vm.swappiness = 180
 vm.page-cluster = 0
 EOF
   /usr/sbin/sysctl -q --system
@@ -84,31 +83,6 @@ EOF
   printf '[Journal]\nStorage=volatile\nRuntimeMaxUse=4M\n' > /etc/systemd/journald.conf.d/10-kubesolo-demo.conf
   systemctl restart systemd-journald
   echo "journal in RAM, capped to 4M"
-}
-
-step_wifi() {
-  log "wifi"
-  /usr/sbin/iw dev wlan0 set power_save off
-  cat > /etc/systemd/system/wifi-powersave-off.service <<'EOF'
-[Unit]
-Description=Disable wifi power save on wlan0
-BindsTo=sys-subsystem-net-devices-wlan0.device
-After=sys-subsystem-net-devices-wlan0.device
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/sbin/iw dev wlan0 set power_save off
-
-[Install]
-WantedBy=sys-subsystem-net-devices-wlan0.device
-EOF
-  systemctl daemon-reload
-  systemctl enable wifi-powersave-off.service >/dev/null 2>&1
-  # NetworkManager re-applies its own default (enabled) at every activation.
-  mkdir -p /etc/NetworkManager/conf.d
-  printf '[connection]\nwifi.powersave = 2\n' > /etc/NetworkManager/conf.d/10-kubesolo-demo-powersave.conf
-  /usr/sbin/iw dev wlan0 get power_save
 }
 
 append_all() {
@@ -185,28 +159,42 @@ step_network() {
     echo "already using wpa_supplicant + dhcpcd"
     return
   fi
-  local nm_yaml ip
-  nm_yaml=$(grep -l 'wifis:' /etc/netplan/*.yaml 2>/dev/null | head -1 || true)
-  [ -n "$nm_yaml" ] || { echo "no netplan wifi config found, skipping"; return 1; }
+  local ip
+  grep -qs 'wifis:' /etc/netplan/*.yaml || { echo "no netplan wifi config found, skipping"; return 1; }
   ip=$(ip -4 -o addr show wlan0 | awk '{print $4}' | cut -d/ -f1 | head -1)
 
-  python3 - "$nm_yaml" <<'PY'
-import re, subprocess, sys, yaml
-d = yaml.safe_load(open(sys.argv[1]))
-ssid, ap = next(iter(d["network"]["wifis"]["wlan0"]["access-points"].items()))
-pw = ap["auth"].get("password") or ap["auth"]["key"]
-if re.fullmatch(r"[0-9a-fA-F]{64}", pw):
-    psk = pw
-else:
-    r = subprocess.run(["wpa_passphrase", ssid, pw], capture_output=True, text=True)
-    if r.returncode != 0:
-        sys.exit("wpa_passphrase failed")
-    psk = re.search(r"^\s*psk=([0-9a-f]{64})$", r.stdout, re.M).group(1)
-with open("/etc/wpa_supplicant/wpa_supplicant-wlan0.conf", "w") as f:
-    f.write("ctrl_interface=DIR=/run/wpa_supplicant GROUP=netdev\nupdate_config=0\ncountry=FR\n\n"
-            "network={\n\tssid=\"%s\"\n\tpsk=%s\n}\n" % (ssid, psk))
+  # The Imager network from netplan, then the wifi-add ones (nmcli keeps those
+  # out of netplan, wifi-add saves them in $WPA_EXTRA), each network once.
+  python3 - "$WPA_CONF" "$WPA_EXTRA" /etc/netplan/*.yaml <<'PY'
+import os, re, subprocess, sys, yaml
+conf, extra, files = sys.argv[1], sys.argv[2], sys.argv[3:]
+blocks, seen = [], set()
+for path in files:
+    d = yaml.safe_load(open(path)) or {}
+    for iface in (d.get("network", {}).get("wifis") or {}).values():
+        for ssid, ap in (iface.get("access-points") or {}).items():
+            pw = ap["auth"].get("password") or ap["auth"]["key"]
+            if re.fullmatch(r"[0-9a-fA-F]{64}", pw):
+                psk = pw
+            else:
+                r = subprocess.run(["wpa_passphrase", ssid, pw], capture_output=True, text=True)
+                if r.returncode != 0:
+                    sys.exit("wpa_passphrase failed")
+                psk = re.search(r"^\s*psk=([0-9a-f]{64})$", r.stdout, re.M).group(1)
+            prio = ((ap.get("networkmanager") or {}).get("passthrough") or {}).get("connection.autoconnect-priority")
+            line = "\tpriority=%d\n" % int(prio) if prio else ""
+            blocks.append("network={\n\tssid=\"%s\"\n\tpsk=%s\n%s}\n" % (ssid, psk, line))
+            seen.add(ssid)
+if os.path.exists(extra):
+    for block in re.findall(r"network=\{.*?\n\}", open(extra).read(), re.S):
+        ssid = re.search(r'ssid="(.*)"', block).group(1)
+        if ssid not in seen:
+            blocks.append(block + "\n")
+            seen.add(ssid)
+with open(conf, "w") as f:
+    f.write("ctrl_interface=DIR=/run/wpa_supplicant GROUP=netdev\nupdate_config=0\ncountry=FR\n\n" + "\n".join(blocks))
+print("wifi networks: " + ", ".join(re.findall(r'ssid="(.*)"', "".join(blocks))))
 PY
-  [ -f "$WPA_EXTRA" ] && cat "$WPA_EXTRA" >> "$WPA_CONF"
   chmod 600 "$WPA_CONF"
 
   cp -n /etc/dhcpcd.conf /etc/dhcpcd.conf.orig
@@ -268,7 +256,13 @@ step_wifi_add() {
     printf '\n%s\n' "$block" >> "$WPA_CONF"
     echo "added to $WPA_CONF, used from the next boot"
   else
-    echo "saved, the network step will add it"
+    # Still on NetworkManager (stock image): it must join this network right
+    # away, the network step picks it up from there.
+    nmcli connection delete "$ssid" >/dev/null 2>&1 || true
+    nmcli connection add type wifi ifname wlan0 con-name "$ssid" ssid "$ssid" \
+      wifi-sec.key-mgmt wpa-psk wifi-sec.psk "$(echo "$block" | sed -n 's/^\tpsk=//p')" \
+      connection.autoconnect-priority 10 >/dev/null
+    echo "added to NetworkManager (priority 10), joined whenever it is in range"
   fi
 }
 
@@ -292,15 +286,15 @@ fi
 steps=()
 for arg in "$@"; do
   case "$arg" in
-    live) steps+=(services sessions memory wifi) ;;
-    all)  steps+=(services sessions memory wifi boot network) ;;
+    live) steps+=(services sessions memory) ;;
+    all)  steps+=(services sessions memory boot network) ;;
     *)    steps+=("$arg") ;;
   esac
 done
 
 for step in "${steps[@]}"; do
   case "$step" in
-    show|services|sessions|memory|wifi|boot|network|confirm|reboot) "step_$step" ;;
+    show|services|sessions|memory|boot|network|confirm|reboot) "step_$step" ;;
     *) usage; exit 1 ;;
   esac
 done

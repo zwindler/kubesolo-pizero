@@ -44,12 +44,15 @@ function close_doom_grid() {
   vnc_close_all
   kubectl -n doom delete svc -l demo=doom-grid --wait=false >/dev/null 2>&1
   kubectl delete -f demo/manifests/doom-grid.yaml --wait=false >/dev/null 2>&1
+  kubectl -n doom scale deploy/doom --replicas=1 >/dev/null 2>&1 || true
 }
 
 # A separate Deployment already at VNC_SCALE=1: scaling it creates pods
 # without replacing any, a rollout on top of the scale-up is what pushed
 # KubeSolo above GOMEMLIMIT during the tests.
 vnc_close_all
+# More room for the grid: the single DOOM of demo 10 steps aside.
+kubectl -n doom scale deploy/doom --replicas=0 >/dev/null 2>&1 || true
 p "# Kubernetes, c'est fait pour scaler..."
 pe "kubectl apply -f demo/manifests/doom-grid.yaml"
 pe "kubectl -n doom scale deploy/doom-grid --replicas=$REPLICAS"
