@@ -44,6 +44,10 @@ PI_HOST=<user>@<pi> ./demo/talk/menu.sh
 
 Settings can also come from a file: `DEMO_ENV=<file>` (`PI_HOST`, `VIDEO_DIR` for fallback videos named `01.mp4`...`11.mp4`, `VNC_PASSWORD`). In any demo, `v` instead of Enter plays the fallback video.
 
+Before going on stage, `./demo/talk/00-preflight.sh` (also entry `00` of the menu) checks the laptop (tools, VPN, fallback videos), finds the Pis on the hotspot by MAC prefix and hostname (`DEMO_HOSTNAME` prefix, so `kubedoom-demo2` counts as a demo Pi, and `BACKUP_HOSTNAME`), checks each demo Pi is still stock with the prefetch done and the backup cluster is ready, fetches `kubeconfig-backup`, then prints the menu command for each Pi. A changed SSH host key is compared to the known ones and only replaced after confirmation.
+
+To prepare a freshly flashed demo card (Imager: hostname `kubedoom-demo<n>`, user, home wifi, SSH), boot it, run the preflight and run the command printed by each KO, in order: copy the scripts, `00-prefetch.sh`, `wifi-add <hotspot>`, one reboot. Run the preflight again until the demo Pi only shows `ok` (and the wifi warning while the hotspot is off).
+
 The memory cgroup (`boot` step) is mandatory: without it KubeSolo installs fine but no pod can start (`memory.max: no such file or directory`).
 
 ## Backup Pi

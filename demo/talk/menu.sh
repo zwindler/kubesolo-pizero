@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 command -v fzf >/dev/null || { echo "fzf is missing: brew install fzf" >&2; exit 1; }
 
 LABELS=(
+  "00 Preflight        | Mac, IP et état des deux Pi"
   "01 Mémoire          | free, GPU, image d'origine"
   "02 Headless         | modules, timers, services"
   "03 Sessions         | systemd --user par connexion"
