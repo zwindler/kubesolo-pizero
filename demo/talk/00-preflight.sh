@@ -31,7 +31,7 @@ ko()    { echo "  ${RED}KO${RESET}    $*"; FAILS=$((FAILS + 1)); }
 title() { echo; echo "${PURPLE}== $*${RESET}"; }
 
 scripts_hash_local() {
-  (cd "$REPO_DIR" && find demo -type f ! -name .DS_Store ! -name '*.md' ! -name 00-preflight.sh | LC_ALL=C sort | xargs md5 -r | awk '{print $1, $2}' | md5 -q)
+  (cd "$REPO_DIR" && find demo -maxdepth 1 -name '*.sh' | LC_ALL=C sort | xargs md5 -r | awk '{print $1, $2}' | md5 -q)
 }
 
 title "Laptop"
@@ -130,7 +130,7 @@ echo "images=$(ls /opt/kubesolo-demo/images/*.tar 2>/dev/null | wc -l)"
 test -x /usr/sbin/iptables && echo "iptables=yes"
 test -x /usr/local/bin/kubesolo && echo "kubesolo=yes"
 echo "kubesolo_state=$(systemctl is-active kubesolo 2>/dev/null)"
-cd ~/kubesolo-pizero 2>/dev/null && echo "scripts=$(find demo -type f ! -name .DS_Store ! -name '*.md' ! -name 00-preflight.sh | LC_ALL=C sort | xargs md5sum | awk '{print $1, $2}' | md5sum | cut -c1-32)"
+cd ~/kubesolo-pizero 2>/dev/null && echo "scripts=$(find demo -maxdepth 1 -name '*.sh' | LC_ALL=C sort | xargs md5sum | awk '{print $1, $2}' | md5sum | cut -c1-32)"
 EOF
 }
 
@@ -148,9 +148,9 @@ check_common() {
   fi
   ok "MemAvailable $(fact memavail) MiB"
   if [[ "$(fact scripts)" == "$(scripts_hash_local)" ]]; then
-    ok "demo scripts identical to the laptop"
+    ok "Pi-side scripts (demo/*.sh) identical to the laptop"
   else
-    ko "demo scripts missing or outdated: ssh $PI_USER@$ip mkdir -p kubesolo-pizero && rsync -rlpt --delete $REPO_DIR/demo/ $PI_USER@$ip:kubesolo-pizero/demo/"
+    ko "Pi-side scripts (demo/*.sh) missing or outdated: ssh $PI_USER@$ip mkdir -p kubesolo-pizero && rsync -rlpt --delete $REPO_DIR/demo/ $PI_USER@$ip:kubesolo-pizero/demo/"
   fi
 }
 
