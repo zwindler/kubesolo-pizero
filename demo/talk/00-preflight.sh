@@ -28,6 +28,9 @@ FAILS=0
 ok()    { echo "  ${GREEN}ok${RESET}    $*"; }
 warn()  { echo "  ${BROWN}warn${RESET}  $*"; }
 ko()    { echo "  ${RED}KO${RESET}    $*"; FAILS=$((FAILS + 1)); }
+fix()   { ko "$1: $2"; [[ -n "$NEXT" ]] || NEXT="$2"; }
+next()  { [[ -z "$NEXT" ]] || echo "  ${BROWN}next${RESET}  $NEXT"; NEXT=""; }
+NEXT=""
 title() { echo; echo "${PURPLE}== $*${RESET}"; }
 
 scripts_hash_local() {
@@ -69,18 +72,17 @@ else
 fi
 
 title "Pis on $prefix.0/24"
-for i in $(seq 1 254); do
-  ping -c1 -t1 "$prefix.$i" >/dev/null 2>&1 &
-done
-wait
-# macOS arp drops leading zeros (e4:5f:1:...): pad before comparing
+alive=$(for i in $(seq 1 254); do
+  (ping -c1 -t1 "$prefix.$i" >/dev/null 2>&1 && echo "$prefix.$i") &
+done; wait)
+# macOS arp drops leading zeros (e4:5f:1:...) and keeps stale entries
 pis=$(arp -an -i "$IFACE" | awk -v ouis="$PI_OUIS" '
   BEGIN { n = split(ouis, o, " "); for (i = 1; i <= n; i++) want[o[i]] = 1 }
   $4 ~ /:/ {
     split(tolower($4), b, ":")
     for (i = 1; i <= 3; i++) if (length(b[i]) == 1) b[i] = "0" b[i]
     if ((b[1] ":" b[2] ":" b[3]) in want) { ip = $2; gsub(/[()]/, "", ip); print ip }
-  }' | sort -t. -k4 -n -u)
+  }' | grep -x -F "${alive:-none}" | sort -t. -k4 -n -u)
 [[ -n "$pis" ]] || ko "no Raspberry Pi on the network: powered, and on the hotspot?"
 
 fix_host_key() {
@@ -136,21 +138,23 @@ EOF
 
 fact() { sed -n "s/^$1=//p" <<<"$facts"; }
 
-check_common() {
-  local ip="$1" ssid
+check_scripts() {
+  if [[ "$(fact scripts)" == "$(scripts_hash_local)" ]]; then
+    ok "Pi-side scripts (demo/*.sh) identical to the laptop"
+  else
+    fix "Pi-side scripts (demo/*.sh) missing or outdated" "ssh $PI_USER@$1 mkdir -p kubesolo-pizero && rsync -rlpt --delete $REPO_DIR/demo/ $PI_USER@$1:kubesolo-pizero/demo/"
+  fi
+}
+
+check_wifi() {
+  local ssid
   ssid=$(fact ssid)
   if [[ "$ssid" == "$HOTSPOT_SSID" ]]; then
     ok "wifi $ssid"
   elif [[ "$(fact ssid_known)" == yes ]]; then
     warn "wifi '${ssid:-?}', $HOTSPOT_SSID known: the Pi joins it when the current network is gone"
   else
-    ko "wifi '${ssid:-?}' and $HOTSPOT_SSID unknown: ssh -t $PI_USER@$ip 'cd ~/kubesolo-pizero && sudo ./demo/10-os-tuning.sh wifi-add $HOTSPOT_SSID'"
-  fi
-  ok "MemAvailable $(fact memavail) MiB"
-  if [[ "$(fact scripts)" == "$(scripts_hash_local)" ]]; then
-    ok "Pi-side scripts (demo/*.sh) identical to the laptop"
-  else
-    ko "Pi-side scripts (demo/*.sh) missing or outdated: ssh $PI_USER@$ip mkdir -p kubesolo-pizero && rsync -rlpt --delete $REPO_DIR/demo/ $PI_USER@$ip:kubesolo-pizero/demo/"
+    fix "wifi '${ssid:-?}' and $HOTSPOT_SSID unknown" "ssh -t $PI_USER@$1 'cd ~/kubesolo-pizero && sudo ./demo/10-os-tuning.sh wifi-add $HOTSPOT_SSID'"
   fi
 }
 
@@ -158,25 +162,30 @@ for DEMO_IP in $DEMO_IPS; do
   title "Demo Pi $("${SSH[@]}" "$PI_USER@$DEMO_IP" hostname) ($DEMO_IP)"
   facts=$(pi_facts "$DEMO_IP")
   if [[ "$(fact cloudinit)" == done ]]; then ok "cloud-init done"; else warn "cloud-init '$(fact cloudinit)': first boot not finished?"; fi
-  check_common "$DEMO_IP"
+  if [[ "$(fact tuned)" == yes ]]; then ko "OS tuning already applied: demos 01 to 06 show nothing, use a spare demo card"; else ok "stock OS, no tuning"; fi
+  if [[ "$(fact kubesolo)" == yes ]]; then ko "KubeSolo already installed: demo 07 has nothing left to install, use a spare demo card"; else ok "KubeSolo not installed"; fi
+  check_scripts "$DEMO_IP"
   if [[ "$(fact sudo)" == yes && "$(fact archives)" -ge 1 && "$(fact images)" -ge 2 && "$(fact iptables)" == yes ]]; then
     ok "prefetch done (KubeSolo archive, $(fact images) images, iptables, passwordless sudo)"
   else
-    ko "prefetch missing: ssh -t $PI_USER@$DEMO_IP 'cd ~/kubesolo-pizero && sudo ./demo/00-prefetch.sh'"
+    fix "prefetch missing" "ssh -t $PI_USER@$DEMO_IP 'cd ~/kubesolo-pizero && sudo ./demo/00-prefetch.sh'"
   fi
+  check_wifi "$DEMO_IP"
   if [[ "$(fact boots)" -ge 2 ]]; then
     ok "rebooted since the first boot"
   else
-    ko "still on the first boot, demo 06 would count cloud-init: ssh -t $PI_USER@$DEMO_IP sudo systemctl reboot"
+    fix "still on the first boot, demo 06 would count cloud-init" "ssh -t $PI_USER@$DEMO_IP sudo systemctl reboot"
   fi
-  if [[ "$(fact tuned)" == yes ]]; then ko "OS tuning already applied: demos 01 to 06 show nothing, use a spare demo card"; else ok "stock OS, no tuning"; fi
-  if [[ "$(fact kubesolo)" == yes ]]; then ko "KubeSolo already installed: demo 07 has nothing left to install, use a spare demo card"; else ok "KubeSolo not installed"; fi
+  ok "MemAvailable $(fact memavail) MiB"
+  next
 done
 
 if [[ -n "$BACKUP_IP" ]]; then
   title "Backup Pi $BACKUP_HOSTNAME ($BACKUP_IP)"
   facts=$(pi_facts "$BACKUP_IP")
-  check_common "$BACKUP_IP"
+  check_scripts "$BACKUP_IP"
+  check_wifi "$BACKUP_IP"
+  ok "MemAvailable $(fact memavail) MiB"
   if [[ "$(fact kubesolo_state)" == active ]]; then ok "kubesolo active"; else ko "kubesolo $(fact kubesolo_state)"; fi
   if KUBECONFIG_OUT="$BACKUP_KUBECONFIG" "$REPO_DIR/demo/fetch-kubeconfig.sh" "$PI_USER@$BACKUP_IP" >/dev/null 2>&1; then
     # The Pi may have changed IP since the kubeconfig was written
@@ -198,6 +207,7 @@ if [[ -n "$BACKUP_IP" ]]; then
   else
     ko "cannot fetch the kubeconfig from $BACKUP_IP"
   fi
+  next
 fi
 
 [[ -n "$DEMO_IPS" ]] || ko "demo Pi $DEMO_HOSTNAME* not found"
