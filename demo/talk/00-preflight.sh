@@ -130,7 +130,7 @@ sudo -n true 2>/dev/null && echo "sudo=yes"
 ssid=$(sudo -n iw dev wlan0 link 2>/dev/null | awk '/SSID:/{sub(/^[ \t]*SSID: /, ""); print}')
 [ -n "$ssid" ] || ssid=$(nmcli -t -f ACTIVE,SSID dev wifi 2>/dev/null | awk -F: '$1 == "yes" {print $2; exit}')
 echo "ssid=$ssid"
-{ nmcli -t -f NAME con show 2>/dev/null; sudo -n cat /etc/netplan/*.yaml 2>/dev/null; } | grep -q -- "$1" && echo "ssid_known=yes"
+{ nmcli -t -f NAME con show 2>/dev/null; sudo -n cat /etc/netplan/*.yaml /etc/wpa_supplicant/wpa_supplicant-wlan0.conf 2>/dev/null; } | grep -q -- "$1" && echo "ssid_known=yes"
 echo "memavail=$(awk '/MemAvailable/{print int($2 / 1024)}' /proc/meminfo)"
 grep -q '^gpu_mem=16' /boot/firmware/config.txt && echo "tuned=yes"
 echo "archives=$(ls /opt/kubesolo-demo/kubesolo-*-offline.tar.gz 2>/dev/null | wc -l)"
