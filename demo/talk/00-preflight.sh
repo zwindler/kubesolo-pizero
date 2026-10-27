@@ -76,13 +76,19 @@ alive=$(for i in $(seq 1 254); do
   (ping -c1 -t1 "$prefix.$i" >/dev/null 2>&1 && echo "$prefix.$i") &
 done; wait)
 # macOS arp drops leading zeros (e4:5f:1:...) and keeps stale entries
-pis=$(arp -an -i "$IFACE" | awk -v ouis="$PI_OUIS" '
+candidates=$(arp -an -i "$IFACE" | awk -v ouis="$PI_OUIS" '
   BEGIN { n = split(ouis, o, " "); for (i = 1; i <= n; i++) want[o[i]] = 1 }
   $4 ~ /:/ {
     split(tolower($4), b, ":")
     for (i = 1; i <= 3; i++) if (length(b[i]) == 1) b[i] = "0" b[i]
     if ((b[1] ":" b[2] ":" b[3]) in want) { ip = $2; gsub(/[()]/, "", ip); print ip }
-  }' | grep -x -F "${alive:-none}" | sort -t. -k4 -n -u)
+  }' | sort -t. -k4 -n -u)
+# a Pi slow to answer the 1 s sweep gets a second, longer chance before being
+# taken for a stale entry
+pis=""
+for ip in $candidates; do
+  if grep -q -x -F "$ip" <<<"$alive" || ping -c2 -t4 "$ip" >/dev/null 2>&1; then pis="$pis $ip"; fi
+done
 [[ -n "$pis" ]] || ko "no Raspberry Pi on the network: powered, and on the hotspot?"
 
 fix_host_key() {
